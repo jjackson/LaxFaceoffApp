@@ -47,25 +47,49 @@ class AudioService {
       // Load whistle sound (custom or default)
       if (this.settings?.customWhistleUri) {
         console.log('Loading custom whistle:', this.settings.customWhistleUri);
-        this.whistlePlayer = createAudioPlayer(this.settings.customWhistleUri);
+        try {
+          this.whistlePlayer = createAudioPlayer(this.settings.customWhistleUri);
+          console.log('Custom whistle loaded successfully');
+        } catch (error) {
+          console.error('Failed to load custom whistle, falling back to default:', error);
+          this.whistlePlayer = createAudioPlayer(require('../../assets/sounds/whistle.mp3'));
+        }
       } else {
         console.log('Loading default whistle');
-        this.whistlePlayer = createAudioPlayer(require('../../assets/sounds/whistle.mp3'));
+        try {
+          this.whistlePlayer = createAudioPlayer(require('../../assets/sounds/whistle.mp3'));
+          console.log('Default whistle loaded successfully');
+        } catch (error) {
+          console.error('Failed to load default whistle:', error);
+          this.whistlePlayer = null;
+        }
       }
       
       // Load custom Down sound if available
       if (this.settings?.customDownUri) {
         console.log('Loading custom Down sound:', this.settings.customDownUri);
-        this.downPlayer = createAudioPlayer(this.settings.customDownUri);
+        try {
+          this.downPlayer = createAudioPlayer(this.settings.customDownUri);
+          console.log('Custom Down sound loaded successfully');
+        } catch (error) {
+          console.error('Failed to load custom Down sound:', error);
+          this.downPlayer = null;
+        }
       }
       
       // Load custom Set sound if available
       if (this.settings?.customSetUri) {
         console.log('Loading custom Set sound:', this.settings.customSetUri);
-        this.setPlayer = createAudioPlayer(this.settings.customSetUri);
+        try {
+          this.setPlayer = createAudioPlayer(this.settings.customSetUri);
+          console.log('Custom Set sound loaded successfully');
+        } catch (error) {
+          console.error('Failed to load custom Set sound:', error);
+          this.setPlayer = null;
+        }
       }
       
-      console.log('All sounds loaded successfully');
+      console.log('All sounds loading completed');
     } catch (error) {
       console.error('Failed to load sounds:', error);
     }
@@ -83,13 +107,16 @@ class AudioService {
         console.log('Played custom "Down" sound');
       } else {
         // Fallback to text-to-speech
+        console.log('🔊 Using TTS for "Down" command');
+        console.log('🔊 TTS available:', Speech.getAvailableVoicesAsync ? 'Yes' : 'No');
+        
         await Speech.speak('Down', {
           language: 'en-US',
           pitch: 1.0,
           rate: 1.0,
           volume: 1.0,
         });
-        console.log('Played TTS "Down" command');
+        console.log('✅ Played TTS "Down" command');
       }
     } catch (error) {
       console.error('Failed to play "Down" command:', error);
@@ -108,13 +135,15 @@ class AudioService {
         console.log('Played custom "Set" sound');
       } else {
         // Fallback to text-to-speech
+        console.log('🔊 Using TTS for "Set" command');
+        
         await Speech.speak('Set', {
           language: 'en-US',
           pitch: 1.0,
           rate: 1.0,
           volume: 1.0,
         });
-        console.log('Played TTS "Set" command');
+        console.log('✅ Played TTS "Set" command');
       }
     } catch (error) {
       console.error('Failed to play "Set" command:', error);
@@ -134,21 +163,54 @@ class AudioService {
         this.whistlePlayer.play();
         console.log('Started playing real whistle sound');
         
-        // Wait for the whistle to finish playing
+        // Wait for the whistle to finish playing with a timeout
         await new Promise((resolve) => {
+          let resolved = false;
+          const maxWaitTime = 5000; // 5 second timeout
+          let checkCount = 0;
+          const maxChecks = maxWaitTime / 100; // Maximum number of status checks
+          
           const checkStatus = () => {
-            if (this.whistlePlayer.playing) {
-              // Still playing, check again in 100ms
-              setTimeout(checkStatus, 100);
-            } else {
-              // Finished playing
-              console.log('Whistle finished playing');
+            checkCount++;
+            
+            if (resolved) return;
+            
+            // Check if we've exceeded our timeout or max checks
+            if (checkCount >= maxChecks) {
+              console.log('Whistle playback timeout reached, continuing...');
+              resolved = true;
+              resolve();
+              return;
+            }
+            
+            try {
+              if (this.whistlePlayer && this.whistlePlayer.playing) {
+                // Still playing, check again in 100ms
+                setTimeout(checkStatus, 100);
+              } else {
+                // Finished playing or player is null
+                console.log('Whistle finished playing');
+                resolved = true;
+                resolve();
+              }
+            } catch (error) {
+              console.log('Error checking whistle player status, continuing...', error);
+              resolved = true;
               resolve();
             }
           };
           
           // Start checking after a small delay to ensure playback started
           setTimeout(checkStatus, 100);
+          
+          // Also set a hard timeout as a fallback
+          setTimeout(() => {
+            if (!resolved) {
+              console.log('Hard timeout reached for whistle playback');
+              resolved = true;
+              resolve();
+            }
+          }, maxWaitTime);
         });
       } else {
         // Fallback to TTS if whistle sound failed to load

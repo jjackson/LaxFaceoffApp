@@ -14,11 +14,21 @@ import Slider from '@react-native-community/slider';
 import RangeSlider from 'react-native-fast-range-slider';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors } from '../constants/Colors';
-import { useSettings } from '../contexts/SettingsContext';
+import { useSettings, PRACTICE_TYPES, PRACTICE_TYPE_CONFIGS } from '../contexts/SettingsContext';
 import AudioService from '../services/AudioService';
+import SegmentedControl from '../components/SegmentedControl';
 
 export default function SettingsScreen({ navigation }) {
-  const { settings, updateSetting, updateMultipleSettings, resetToDefaults } = useSettings();
+  const { 
+    settings, 
+    updateSetting, 
+    updateMultipleSettings, 
+    resetToDefaults,
+    updatePracticeType,
+    updatePracticeTypeSettings,
+    getCurrentPracticeSettings,
+    resetPracticeTypeToDefaults
+  } = useSettings();
   
   console.log('🔧 SettingsScreen loaded, current settings:', settings);
   
@@ -28,6 +38,24 @@ export default function SettingsScreen({ navigation }) {
   const [modalValue, setModalValue] = useState('');
   const [modalCallback, setModalCallback] = useState(null);
   const inputRef = useRef(null);
+
+  // Get current practice settings
+  const currentPracticeSettings = getCurrentPracticeSettings();
+  
+  // Segmented control data
+  const practiceTypeSegments = [
+    'Down Set Whistle',
+    'Rapid Clamp', 
+    'Three Whistle'
+  ];
+  
+  const practiceTypeValues = [
+    PRACTICE_TYPES.DOWN_SET_WHISTLE,
+    PRACTICE_TYPES.RAPID_CLAMP,
+    PRACTICE_TYPES.THREE_WHISTLE
+  ];
+  
+  const selectedSegmentIndex = practiceTypeValues.indexOf(settings.selectedPracticeType);
 
   // Function to play current sounds
   const playCurrentSound = async (soundType) => {
@@ -150,9 +178,9 @@ export default function SettingsScreen({ navigation }) {
         return;
       }
       
-      // Update both settings at once to prevent conflicts
-      console.log('Updating settings:', { [minKey]: roundedLow, [maxKey]: roundedHigh });
-      updateMultipleSettings({
+      // Update both settings at once to prevent conflicts for current practice type
+      console.log('Updating practice type settings:', { [minKey]: roundedLow, [maxKey]: roundedHigh });
+      updatePracticeTypeSettings(settings.selectedPracticeType, {
         [minKey]: roundedLow,
         [maxKey]: roundedHigh
       });
@@ -269,7 +297,10 @@ export default function SettingsScreen({ navigation }) {
       <View style={styles.counterContainer}>
         <TouchableOpacity 
           style={styles.counterButton}
-          onPress={() => updateSetting('numberOfReps', Math.max(1, settings.numberOfReps - 1))}
+          onPress={() => {
+            const newValue = Math.max(1, currentPracticeSettings.numberOfReps - 1);
+            updatePracticeTypeSettings(settings.selectedPracticeType, { numberOfReps: newValue });
+          }}
         >
           <Ionicons name="remove" size={24} color={Colors.primary} />
         </TouchableOpacity>
@@ -279,11 +310,11 @@ export default function SettingsScreen({ navigation }) {
           onPress={() => {
             showInputModal(
               'Set Number of Reps (1-50)',
-              settings.numberOfReps || 5,
+              currentPracticeSettings.numberOfReps || 5,
               (value) => {
                 const num = parseInt(value);
                 if (!isNaN(num) && num >= 1 && num <= 50) {
-                  updateSetting('numberOfReps', num);
+                  updatePracticeTypeSettings(settings.selectedPracticeType, { numberOfReps: num });
                 } else {
                   Alert.alert('Invalid Value', 'Please enter a number between 1 and 50');
                 }
@@ -291,12 +322,15 @@ export default function SettingsScreen({ navigation }) {
             );
           }}
         >
-          <Text style={styles.counterValue}>{settings.numberOfReps}</Text>
+          <Text style={styles.counterValue}>{currentPracticeSettings.numberOfReps}</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
           style={styles.counterButton}
-          onPress={() => updateSetting('numberOfReps', Math.min(50, settings.numberOfReps + 1))}
+          onPress={() => {
+            const newValue = Math.min(50, currentPracticeSettings.numberOfReps + 1);
+            updatePracticeTypeSettings(settings.selectedPracticeType, { numberOfReps: newValue });
+          }}
         >
           <Ionicons name="add" size={24} color={Colors.primary} />
         </TouchableOpacity>
@@ -331,42 +365,125 @@ export default function SettingsScreen({ navigation }) {
           <Text style={styles.title}>Settings</Text>
         </View>
 
+        {/* Practice Type Selection */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Practice Type</Text>
+          
+          <SegmentedControl
+            segments={practiceTypeSegments}
+            selectedIndex={selectedSegmentIndex}
+            onChange={(index) => {
+              const selectedPracticeType = practiceTypeValues[index];
+              updatePracticeType(selectedPracticeType);
+            }}
+            style={styles.practiceTypeSegmentedControl}
+          />
+          
+          {/* Practice Type Description */}
+          <View style={styles.practiceTypeDescription}>
+            <Text style={styles.practiceTypeDescriptionText}>
+              {PRACTICE_TYPE_CONFIGS[settings.selectedPracticeType]?.description || ''}
+            </Text>
+          </View>
+        </View>
+
         {/* Timing Settings Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Timing Settings</Text>
+          <Text style={styles.sectionTitle}>
+            {PRACTICE_TYPE_CONFIGS[settings.selectedPracticeType]?.name || 'Practice'} Settings
+          </Text>
           
-          <TimingSliderRow
-            label="Down (seconds)"
-            icon="timer-outline"
-            minValue={settings.downMin}
-            maxValue={settings.downMax}
-            minKey="downMin"
-            maxKey="downMax"
-            absoluteMin={0}
-            absoluteMax={10}
-          />
+          {/* Down-Set-Whistle Settings */}
+          {settings.selectedPracticeType === PRACTICE_TYPES.DOWN_SET_WHISTLE && (
+            <>
+              <TimingSliderRow
+                label="Down to Set (seconds)"
+                icon="timer-outline"
+                minValue={currentPracticeSettings.downMin}
+                maxValue={currentPracticeSettings.downMax}
+                minKey="downMin"
+                maxKey="downMax"
+                absoluteMin={0}
+                absoluteMax={10}
+              />
+              
+              <TimingSliderRow
+                label="Set to Whistle (seconds)"
+                icon="timer-outline"
+                minValue={currentPracticeSettings.setMin}
+                maxValue={currentPracticeSettings.setMax}
+                minKey="setMin"
+                maxKey="setMax"
+                absoluteMin={0}
+                absoluteMax={10}
+              />
+              
+              <TimingSliderRow
+                label="Rest Between Reps (seconds)"
+                icon="pause-outline"
+                minValue={currentPracticeSettings.restBetweenMin}
+                maxValue={currentPracticeSettings.restBetweenMax}
+                minKey="restBetweenMin"
+                maxKey="restBetweenMax"
+                absoluteMin={0}
+                absoluteMax={10}
+              />
+            </>
+          )}
           
-          <TimingSliderRow
-            label="Set (seconds)"
-            icon="timer-outline"
-            minValue={settings.setMin}
-            maxValue={settings.setMax}
-            minKey="setMin"
-            maxKey="setMax"
-            absoluteMin={0}
-            absoluteMax={10}
-          />
+          {/* Rapid Clamp Settings */}
+          {settings.selectedPracticeType === PRACTICE_TYPES.RAPID_CLAMP && (
+            <>
+              <TimingSliderRow
+                label="Rest Between Reps (seconds)"
+                icon="pause-outline"
+                minValue={currentPracticeSettings.restBetweenMin}
+                maxValue={currentPracticeSettings.restBetweenMax}
+                minKey="restBetweenMin"
+                maxKey="restBetweenMax"
+                absoluteMin={0.5}
+                absoluteMax={10}
+              />
+            </>
+          )}
           
-          <TimingSliderRow
-            label="Rest Between Reps (seconds)"
-            icon="pause-outline"
-            minValue={settings.restBetweenMin}
-            maxValue={settings.restBetweenMax}
-            minKey="restBetweenMin"
-            maxKey="restBetweenMax"
-            absoluteMin={0}
-            absoluteMax={10}
-          />
+          {/* Three Whistle Settings */}
+          {settings.selectedPracticeType === PRACTICE_TYPES.THREE_WHISTLE && (
+            <>
+              <TimingSliderRow
+                label="Clamp to Pull (seconds)"
+                icon="timer-outline"
+                minValue={currentPracticeSettings.clampToPullMin}
+                maxValue={currentPracticeSettings.clampToPullMax}
+                minKey="clampToPullMin"
+                maxKey="clampToPullMax"
+                absoluteMin={0.1}
+                absoluteMax={3}
+              />
+              
+              <TimingSliderRow
+                label="Pull to Pop (seconds)"
+                icon="timer-outline"
+                minValue={currentPracticeSettings.pullToPopMin}
+                maxValue={currentPracticeSettings.pullToPopMax}
+                minKey="pullToPopMin"
+                maxKey="pullToPopMax"
+                absoluteMin={0.1}
+                absoluteMax={3}
+              />
+              
+              <TimingSliderRow
+                label="Reset Pause (seconds)"
+                icon="pause-outline"
+                minValue={currentPracticeSettings.resetPauseMin}
+                maxValue={currentPracticeSettings.resetPauseMax}
+                minKey="resetPauseMin"
+                maxKey="resetPauseMax"
+                absoluteMin={1}
+                absoluteMax={10}
+              />
+            </>
+          )}
           
           <RepCounterRow />
         </View>
@@ -490,6 +607,8 @@ export default function SettingsScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+
     </SafeAreaView>
   );
 }
@@ -520,26 +639,26 @@ const styles = StyleSheet.create({
     color: Colors.primary,
   },
   section: {
-    marginTop: 32,
+    marginTop: 20,
     paddingHorizontal: 20,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: Colors.primary,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   // Slider Components
   sliderSection: {
     backgroundColor: Colors.backgroundSecondary,
     borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+    padding: 12,
+    marginBottom: 12,
   },
   sliderHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   sliderLabel: {
     fontSize: 18,
@@ -554,8 +673,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
-    paddingVertical: 12,
+    marginBottom: 6,
+    paddingVertical: 4,
     backgroundColor: Colors.background,
     borderRadius: 8,
   },
@@ -597,7 +716,7 @@ const styles = StyleSheet.create({
   // Range Slider Styles
   rangeSliderContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 20,
+    paddingVertical: 6,
   },
   rangeSlider: {
     width: '100%',
@@ -635,7 +754,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 4,
     paddingHorizontal: 12,
     width: 280,
   },
@@ -644,9 +763,9 @@ const styles = StyleSheet.create({
   },
   tick: {
     width: 2,
-    height: 8,
+    height: 6,
     backgroundColor: Colors.textSecondary,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   tickLabel: {
     fontSize: 12,
@@ -662,8 +781,9 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
+    paddingTop: 120,
   },
   modalContent: {
     backgroundColor: Colors.background,
@@ -740,7 +860,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 12,
+    marginTop: 6,
   },
   counterButton: {
     backgroundColor: Colors.background,
@@ -775,11 +895,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 16,
+    paddingVertical: 12,
     paddingHorizontal: 16,
     backgroundColor: Colors.backgroundSecondary,
     borderRadius: 12,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   settingLeft: {
     flexDirection: 'row',
@@ -801,9 +921,9 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   resetSection: {
-    marginTop: 40,
+    marginTop: 24,
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingBottom: 24,
   },
   resetButton: {
     flexDirection: 'row',
@@ -821,8 +941,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   playCurrentSounds: {
-    marginTop: 16,
-    padding: 16,
+    marginTop: 12,
+    padding: 12,
     backgroundColor: Colors.backgroundSecondary,
     borderRadius: 8,
     borderWidth: 2,
@@ -832,7 +952,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: Colors.primary,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   playButtonsRow: {
     flexDirection: 'row',
@@ -855,6 +975,44 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     fontSize: 14,
     fontWeight: '500',
+    color: Colors.primary,
+  },
+  // Practice Type Selector Styles
+  practiceTypeSegmentedControl: {
+    marginBottom: 8,
+  },
+  practiceTypeDescription: {
+    backgroundColor: Colors.backgroundSecondary,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+  },
+  practiceTypeDescriptionText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.backgroundSecondary,
+  },
+  modalBackButton: {
+    padding: 8,
+    marginRight: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
     color: Colors.primary,
   },
 });
